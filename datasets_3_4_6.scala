@@ -1,6 +1,5 @@
 import org.apache.log4j.{Level, Logger}
 import org.apache.spark.sql._
-import org.apache.spark.sql.functions._
 
 object datasets_3_4_6 extends App {
   Logger.getLogger("org").setLevel(Level.ERROR)
@@ -10,33 +9,44 @@ object datasets_3_4_6 extends App {
     .master("local")
     .getOrCreate()
 
-  val hr = spark.read
+  case class Position (
+    PositionID: Int,
+    Position: String
+  )
+
+  import spark.implicits._
+
+  val positionDS = spark.read
     .option("inferSchema", "true")
     .option("header", "true")
     .csv("src/main/resources/hrdataset.csv")
-
-  import spark.implicits._
+    .select(
+      "PositionID",
+      "Position"
+    ).as[Position]
 
   val positionsQueries = List(
     "BI",
     "it"
   )
 
-  val api = hr.as("a")
-    .join(positionsQueries.toDF().as("b"),
-      lower(col("a.Position"))
-        .startsWith(
-          lower(col("b.value"))
-        ),
-      "inner")
-    .select(
-      col("a.PositionID") as "positionID",
-      col("a.Position") as "position"
+  val positionsQueriesLower = positionsQueries.map(_.toLowerCase)
+
+  def getFilteredPositions(position: String, queries: List[String]): Boolean = {
+    queries.exists(query =>
+      position.startsWith(query)
     )
+  }
+
+  val apiDS: Dataset[Position] = positionDS
+    .filter(position => getFilteredPositions(
+      position.Position.toLowerCase(),
+      positionsQueriesLower
+    ))
     .distinct()
     .orderBy("positionID")
 
-  api.show()
+  apiDS.show()
 
   spark.stop()
 }
